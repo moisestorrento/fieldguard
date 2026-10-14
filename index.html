@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5c63">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>FieldGuard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#0e1820;--card:#16242f;--ink:#e8eef2;--mut:#93a3b0;--line:#2b3d4a;--pri:#3fb4bd;--onpri:#06222a;--warn:#e0a100;--bad:#ff6b60;--ok:#4cc58a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:500 16px/1.4 system-ui,-apple-system,Roboto,sans-serif;overflow:hidden}
+.hide{display:none!important}
+input,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:13px}
+input:focus,select:focus,button:focus-visible{outline:3px solid var(--pri);outline-offset:1px}
+button{font:700 17px system-ui,sans-serif;min-height:52px;border-radius:12px;border:2px solid var(--pri);background:transparent;color:var(--pri);padding:10px 14px;width:100%;margin-top:10px}
+button.main{background:var(--pri);color:var(--onpri)}
+button.bad{border-color:var(--bad);color:var(--bad)}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.err{color:var(--bad);font-size:14px;min-height:20px;margin-top:8px}
+.ok{color:var(--ok)}
+
+/* Login */
+#login{height:100%;display:flex;flex-direction:column;justify-content:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top,0px));max-width:420px;margin:0 auto}
+#login h1{font-size:40px;margin:0 0 4px;letter-spacing:-.5px}
+#login p{color:var(--mut);margin:0 0 28px}
+#carnet{font-size:28px;text-align:center;letter-spacing:4px;padding:16px}
+details{margin-top:28px;color:var(--mut);font-size:14px}
+textarea{width:100%;background:var(--bg);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:10px;font:inherit;margin-top:8px}
+
+/* App con mapa */
+#app{position:fixed;inset:0}
+#map{position:absolute;inset:0;background:#1b2a35}
+.top{position:absolute;z-index:500;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top,0px));display:flex;gap:8px;align-items:center}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.pill.grow{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mut);margin-right:6px}
+.dot.on{background:var(--ok)}.dot.off{background:var(--warn)}
+.fab{position:absolute;z-index:500;right:10px;width:46px;height:46px;min-height:0;padding:0;margin:0;border-radius:50%;background:var(--card);border-color:var(--line);color:var(--ink);font-size:20px}
+.sheet{position:absolute;z-index:600;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));max-height:62%;overflow:auto;box-shadow:0 -6px 20px rgba(0,0,0,.4)}
+.grab{width:40px;height:4px;background:var(--line);border-radius:2px;margin:0 auto 10px}
+.timer{font:700 44px/1 system-ui;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:12px;margin:10px 0}
+.stat{flex:1}.stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.stat span{font-size:12px;color:var(--mut)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two button{margin-top:0}
+.ev{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+.ev.w{color:var(--warn)}.ev.b{color:var(--bad)}
+.me{width:18px;height:18px;border-radius:50%;background:#3fb4bd;border:3px solid #fff;box-shadow:0 0 0 6px rgba(63,180,189,.3)}
+@media (prefers-color-scheme:light){:root{--bg:#eef1f3;--card:#fff;--ink:#12263a;--mut:#5b6b7a;--line:#cfd7de;--pri:#0f5c63;--onpri:#fff;--warn:#b57b00;--bad:#b3261e;--ok:#1d7a46}}
+</style>
+</head>
+<body>
+
+<section id="login" class="hide">
+  <h1>FieldGuard</h1>
+  <p>Ingresa con tu número de carnet.</p>
+  <input id="carnet" inputmode="numeric" autocomplete="off" placeholder="Carnet" aria-label="Número de carnet">
+  <div id="lerr" class="err"></div>
+  <button class="main" id="bLogin">Entrar</button>
+  <details><summary>Cargar listado de personal</summary>
+    <textarea id="rost" rows="4" placeholder="carnet;nombre (uno por línea)"></textarea>
+    <button id="bRost" style="min-height:40px;font-size:15px">Guardar listado</button>
+  </details>
+</section>
+
+<section id="app" class="hide">
+  <div id="map"></div>
+  <div class="top">
+    <div class="pill grow"><span class="dot" id="gdot"></span><span id="uname"></span></div>
+    <div class="pill" id="net">En línea</div>
+    <button class="fab" id="bOut" style="position:static" aria-label="Cerrar sesión">⎋</button>
+  </div>
+  <button class="fab" id="bCenter" style="bottom:calc(46% + 10px)" aria-label="Centrar mapa">◎</button>
+
+  <!-- Antes de iniciar -->
+  <div class="sheet" id="sPre">
+    <div class="grab"></div>
+    <b style="font-size:18px">Iniciar jornada</b>
+    <label for="c2">Carnet del acompañante</label>
+    <input id="c2" inputmode="numeric" autocomplete="off" placeholder="Carnet">
+    <div id="w2" class="err"></div>
+    <label for="veh">Vehículo</label>
+    <input id="veh" autocomplete="off" placeholder="Placa o unidad">
+    <label for="km0">Kilometraje inicial (tablero)</label>
+    <input id="km0" inputmode="numeric" placeholder="km">
+    <div id="perr" class="err"></div>
+    <button class="main" id="bStart">Iniciar jornada</button>
+  </div>
+
+  <!-- Jornada activa -->
+  <div class="sheet hide" id="sRun">
+    <div class="grab"></div>
+    <div class="timer" id="clock">00:00:00</div>
+    <div style="font-size:13px;color:var(--mut)" id="crew"></div>
+    <div class="row">
+      <div class="stat"><b id="sKm">0.0</b><span>km GPS</span></div>
+      <div class="stat"><b id="sStops">0</b><span>paradas</span></div>
+      <div class="stat"><b id="sAcc">—</b><span>precisión m</span></div>
+      <div class="stat"><b id="sPend">0</b><span>sin enviar</span></div>
+    </div>
+    <input id="ot" autocomplete="off" placeholder="Número de orden (opcional)">
+    <div class="two" style="margin-top:10px"><button id="bArrive">Llegué</button><button id="bLeave">Terminé</button></div>
+    <select id="incType" style="margin-top:10px"><option>Falla del vehículo</option><option>Accidente</option><option>Situación de inseguridad</option><option>Acceso denegado</option><option>Otro</option></select>
+    <button class="bad" id="bInc">Reportar incidente</button>
+    <button class="main" id="bEnd">Finalizar jornada</button>
+    <div id="log" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Resumen -->
+  <div class="sheet hide" id="sSum">
+    <div class="grab"></div>
+    <b style="font-size:18px">Resumen de la jornada</b>
+    <div id="sumBody" style="margin-top:8px"></div>
+    <button class="main" id="bJson">Descargar resumen</button>
+    <button id="bNew">Nueva jornada</button>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var K_R='fg_roster',K_U='fg_user',K_S='fg_session',K_Q='fg_queue';
+var STOP_MIN=5,STOP_ALERT=15,STOP_R=30,MAX_ACC=50,STEP=8;
+var roster={},user=null,S=null,Q=[],map=null,me=null,line=null,watch=null,tick=null,wake=null,anchor=null,follow=true;
+
+function ls(k,v){try{if(v===undefined){var x=localStorage.getItem(k);return x?JSON.parse(x):null}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+function del(k){try{localStorage.removeItem(k)}catch(e){}}
+function pad(n){return String(n).padStart(2,'0')}
+function hms(ms){var s=Math.max(0,Math.floor(ms/1000));return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
+function hhmm(t){var d=new Date(t);return pad(d.getHours())+':'+pad(d.getMinutes())}
+function dist(a,b){var R=6371000,r=Math.PI/180,dl=(b.lat-a.lat)*r,dn=(b.lng-a.lng)*r;var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x))}
+function parse(t){var o={};t.split(/\r?\n/).forEach(function(l){var p=l.split(/[;,\t]/);if(p.length<2)return;var c=p[0].trim();if(/^\d+$/.test(c))o[c]=p.slice(1).join(' ').trim()});return o}
+
+/* ---------- Personal ---------- */
+function loadRoster(cb){
+  roster=ls(K_R)||{};
+  fetch('roster.csv',{cache:'no-cache'}).then(function(r){return r.ok?r.text():''}).then(function(t){
+    var o=parse(t);if(Object.keys(o).length){roster=o;ls(K_R,o)}cb()}).catch(cb)}
+$('bRost').onclick=function(){var o=parse($('rost').value);if(!Object.keys(o).length){$('lerr').textContent='Formato inválido. Usa carnet;nombre.';return}ls(K_R,o);roster=o;$('rost').value='';$('lerr').textContent='Listado guardado.'};
+
+/* ---------- Login ---------- */
+function login(){
+  var c=$('carnet').value.trim();
+  if(!c){$('lerr').textContent='Escribe tu carnet.';return}
+  if(!roster[c]){$('lerr').textContent='Carnet no registrado. Verifica el número.';return}
+  user={c:c,n:roster[c]};ls(K_U,user);openApp()}
+$('bLogin').onclick=login;
+$('carnet').onkeydown=function(e){if(e.key==='Enter')login()};
+$('carnet').oninput=function(){$('lerr').textContent=''};
+$('bOut').onclick=function(){if(S&&!S.end&&!confirm('Hay una jornada activa. ¿Cerrar sesión de todos modos?'))return;del(K_U);location.reload()};
+
+/* ---------- Mapa ---------- */
+function initMap(){
+  if(map)return;
+  if(typeof L==='undefined'){$('map').innerHTML='<p style="padding:90px 20px;color:var(--mut)">El mapa necesita internet la primera vez. El registro GPS funciona igual.</p>';return}
+  map=L.map('map',{zoomControl:false,attributionControl:true}).setView([13.9942,-89.5597],15);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  line=L.polyline([],{color:'#3fb4bd',weight:5,opacity:.9}).addTo(map);
+  me=L.marker([13.9942,-89.5597],{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[18,18]})}).addTo(map);
+  map.on('dragstart',function(){follow=false})}
+$('bCenter').onclick=function(){follow=true;if(map&&S&&S.last)map.setView([S.last.lat,S.last.lng],17)};
+
+function openApp(){
+  $('login').className='hide';$('app').className='';
+  $('uname').textContent=user.n;initMap();
+  if(map)setTimeout(function(){map.invalidateSize()},50);
+  locate()}
+function locate(){ /* ubicación previa a la jornada */
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(function(p){var ll=[p.coords.latitude,p.coords.longitude];if(map){map.setView(ll,16);me.setLatLng(ll)}$('gdot').className='dot on'},
+    function(){$('gdot').className='dot off'},{enableHighAccuracy:true,timeout:15000})}
+
+/* ---------- Eventos ---------- */
+function ev(type,msg,x,lvl){var e={t:Date.now(),type:type,msg:msg,lvl:lvl||''};if(x)for(var k in x)e[k]=x[k];S.events.push(e);Q.push(e);ls(K_Q,Q);ls(K_S,S);render();return e}
+function updNet(){var n=$('net');n.textContent=navigator.onLine?'En línea':'Sin conexión';n.style.color=navigator.onLine?'var(--ok)':'var(--warn)'}
+addEventListener('online',updNet);addEventListener('offline',updNet);
+
+/* ---------- Jornada ---------- */
+$('c2').oninput=function(){var c=$('c2').value.trim(),w=$('w2');if(!c){w.textContent='';return}if(roster[c]){w.textContent=roster[c];w.className='err ok'}else{w.textContent='Carnet no registrado';w.className='err'}};
+function sheet(n){['sPre','sRun','sSum'].forEach(function(x){$(x).className='sheet'+(x===n?'':' hide')})}
+$('bStart').onclick=function(){
+  var c2=$('c2').value.trim(),v=$('veh').value.trim(),km=parseFloat($('km0').value),e=$('perr');
+  if(!roster[c2]){e.textContent='Verifica el carnet del acompañante.';return}
+  if(c2===user.c){e.textContent='El acompañante debe ser otra persona.';return}
+  if(!v){e.textContent='Escribe la placa o unidad.';return}
+  if(isNaN(km)){e.textContent='Escribe el kilometraje inicial.';return}
+  e.textContent='';
+  S={id:'J'+Date.now(),start:Date.now(),end:null,t1:user,t2:{c:c2,n:roster[c2]},veh:v,km0:km,km1:null,meters:0,last:null,stops:0,events:[],open:null,track:[]};
+  Q=[];anchor=null;follow=true;if(line)line.setLatLngs([]);
+  ev('inicio','Jornada iniciada');startGps();wakeOn();sheet('sRun');runTick()};
+
+function startGps(){
+  if(!navigator.geolocation)return;
+  watch=navigator.geolocation.watchPosition(onPos,function(e){$('gdot').className='dot off';if(e.code===1&&S&&!S.denied){S.denied=1;ev('alerta','Permiso de ubicación denegado',null,'b')}},{enableHighAccuracy:true,maximumAge:5000,timeout:20000})}
+function onPos(p){
+  if(!S||S.end)return;var c=p.coords,pt={lat:c.latitude,lng:c.longitude,t:Date.now()};
+  $('sAcc').textContent=Math.round(c.accuracy);
+  if(c.accuracy>MAX_ACC){$('gdot').className='dot off';return}
+  $('gdot').className='dot on';
+  if(me)me.setLatLng([pt.lat,pt.lng]);
+  if(map&&follow)map.setView([pt.lat,pt.lng],Math.max(map.getZoom(),16));
+  if(!S.last){S.last=pt;S.track.push([pt.lat,pt.lng,pt.t]);ev('gps','Primera ubicación registrada',{lat:pt.lat,lng:pt.lng})}
+  else{var d=dist(S.last,pt);if(d>=STEP){S.meters+=d;S.last=pt;S.track.push([pt.lat,pt.lng,pt.t]);if(line)line.addLatLng([pt.lat,pt.lng])}}
+  if(!anchor)anchor={lat:pt.lat,lng:pt.lng,t:pt.t};
+  if(dist(anchor,pt)>STOP_R){
+    if(S.open){var m=Math.round((pt.t-S.open.t)/60000);ev('parada','Parada de '+m+' min terminó',{lat:S.open.lat,lng:S.open.lng,min:m},m>=STOP_ALERT?'w':'');S.open=null}
+    anchor={lat:pt.lat,lng:pt.lng,t:pt.t}
+  }else if(!S.open&&pt.t-anchor.t>=STOP_MIN*60000){S.open={t:anchor.t,lat:anchor.lat,lng:anchor.lng};S.stops++;if(map)L.circleMarker([anchor.lat,anchor.lng],{radius:8,color:'#e0a100',fillOpacity:.6}).addTo(map)}
+  if(S.open&&!S.open.alerted&&pt.t-S.open.t>=STOP_ALERT*60000){S.open.alerted=true;ev('alerta','Detención prolongada de más de '+STOP_ALERT+' min',{lat:S.open.lat,lng:S.open.lng},'w')}
+  ls(K_S,S);render()}
+function wakeOn(){try{if(navigator.wakeLock)navigator.wakeLock.request('screen').then(function(w){wake=w}).catch(function(){})}catch(e){}}
+document.addEventListener('visibilitychange',function(){if(S&&!S.end&&document.visibilityState==='visible'){wakeOn();if(watch===null)startGps()}});
+
+function here(){return {lat:S.last&&S.last.lat,lng:S.last&&S.last.lng}}
+$('bArrive').onclick=function(){var o=$('ot').value.trim()||'sin número';ev('orden','Llegada a orden '+o,Object.assign({ot:o},here()))};
+$('bLeave').onclick=function(){var o=$('ot').value.trim()||'sin número';ev('orden','Orden '+o+' terminada',Object.assign({ot:o},here()));$('ot').value=''};
+$('bInc').onclick=function(){ev('incidente',$('incType').value,here(),'b')};
+$('bEnd').onclick=function(){
+  var v=prompt('Kilometraje final del tablero (km):');if(v===null)return;var k=parseFloat(v);if(isNaN(k)){alert('Escribe un número válido.');return}
+  S.km1=k;S.end=Date.now();var man=k-S.km0,gps=S.meters/1000;
+  if(man>0&&gps>0&&Math.abs(man-gps)/man>.2)ev('alerta','Tablero ('+man.toFixed(1)+' km) y GPS ('+gps.toFixed(1)+' km) difieren más de 20 %',null,'w');
+  ev('fin','Jornada finalizada');
+  if(watch!==null){navigator.geolocation.clearWatch(watch);watch=null}
+  if(wake){try{wake.release()}catch(e){}wake=null}
+  clearInterval(tick);summary();sheet('sSum')};
+
+function runTick(){clearInterval(tick);tick=setInterval(function(){if(S&&!S.end)$('clock').textContent=hms(Date.now()-S.start)},1000)}
+function render(){
+  if(!S)return;$('crew').textContent=S.t1.n+' y '+S.t2.n+' · '+S.veh;
+  $('sKm').textContent=(S.meters/1000).toFixed(1);$('sStops').textContent=S.stops;$('sPend').textContent=Q.length;
+  var l=$('log');l.innerHTML='';
+  S.events.slice().reverse().slice(0,20).forEach(function(e){var d=document.createElement('div');d.className='ev '+e.lvl;var a=document.createElement('span');a.textContent=e.msg;var b=document.createElement('span');b.textContent=hhmm(e.t);d.appendChild(a);d.appendChild(b);l.appendChild(d)})}
+function row(k,v){return '<div class="ev"><span>'+k+'</span><span>'+v+'</span></div>'}
+function summary(){
+  var al=S.events.filter(function(e){return e.type==='alerta'}).length,inc=S.events.filter(function(e){return e.type==='incidente'}).length,
+  o=S.events.filter(function(e){return e.type==='orden'&&/terminada/.test(e.msg)}).length;
+  $('sumBody').innerHTML=row('Equipo',S.t1.n+' y '+S.t2.n)+row('Vehículo',S.veh)+row('Horario',hhmm(S.start)+' a '+hhmm(S.end)+' ('+hms(S.end-S.start)+')')+row('Km tablero',(S.km1-S.km0).toFixed(1))+row('Km GPS',(S.meters/1000).toFixed(1))+row('Paradas',S.stops)+row('Órdenes terminadas',o)+row('Incidentes',inc)+row('Alertas',al)}
+$('bJson').onclick=function(){var b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='jornada_'+S.id+'.json';document.body.appendChild(a);a.click();a.remove()};
+$('bNew').onclick=function(){S=null;Q=[];del(K_S);del(K_Q);['c2','veh','km0'].forEach(function(i){$(i).value=''});$('w2').textContent='';sheet('sPre')};
+
+/* ---------- Arranque ---------- */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+updNet();
+loadRoster(function(){
+  user=ls(K_U);
+  if(user){openApp();var p=ls(K_S);Q=ls(K_Q)||[];
+    if(p&&!p.end){S=p;ev('reanudar','Aplicación reabierta, jornada retomada',null,'w');startGps();wakeOn();sheet('sRun');runTick();render();
+      if(line&&S.track.length)line.setLatLngs(S.track.map(function(t){return [t[0],t[1]]}))}}
+  else $('login').className=''});
+})();
+</script>
+</body>
+</html>
